@@ -1,6 +1,36 @@
-import React from 'react';
+import React, { useState } from 'react';
+import axios from 'axios';
 
-const ScoreDisplay = ({ results, questions, onRestart }) => {
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+
+const ScoreDisplay = ({ results, questions, onRestart, source }) => {
+  const [saveStatus, setSaveStatus] = useState('idle');
+  const [saveResult, setSaveResult] = useState(null);
+
+  const saveToQuestionBank = async () => {
+    setSaveStatus('saving');
+    try {
+      const response = await axios.post(`${API_BASE_URL}/api/questions/bank`, {
+        questions: questions.map(({ text, options, correct_answer, category }) => ({
+          text,
+          options,
+          correct_answer,
+          category,
+        })),
+      });
+      setSaveResult(response.data);
+      setSaveStatus('saved');
+    } catch (err) {
+      setSaveStatus('error');
+    }
+  };
+
+  const getSaveMessage = () => {
+    const { saved, skipped } = saveResult;
+    const savedText = `Saved ${saved} question${saved === 1 ? '' : 's'} to the question bank.`;
+    return skipped > 0 ? `${savedText} ${skipped} already existed.` : savedText;
+  };
+
   const getScoreMessage = () => {
     const percentage = results.score_percentage;
     
@@ -77,6 +107,24 @@ const ScoreDisplay = ({ results, questions, onRestart }) => {
         </div>
         
         <div style={{ marginTop: '30px' }}>
+          {source === 'ai' && questions.length > 0 && (
+            <div style={{ marginBottom: '15px' }}>
+              {saveStatus === 'saved' ? (
+                <p className="success-message">✅ {getSaveMessage()}</p>
+              ) : (
+                <button
+                  className="button"
+                  onClick={saveToQuestionBank}
+                  disabled={saveStatus === 'saving'}
+                >
+                  {saveStatus === 'saving' ? 'Saving...' : '💾 Save to Question Bank'}
+                </button>
+              )}
+              {saveStatus === 'error' && (
+                <div className="error">Failed to save questions. Please try again.</div>
+              )}
+            </div>
+          )}
           <button className="button" onClick={onRestart}>
             Take Another Quiz
           </button>
