@@ -132,6 +132,7 @@ const Quiz = ({ onRestart, category, source, model, limit }) => {
         results={results} 
         questions={questions}
         onRestart={onRestart}
+        source={source}
       />
     );
   }

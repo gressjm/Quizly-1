@@ -130,6 +130,20 @@ class QuestionUpdate(BaseModel):
     correct_answer: Optional[str] = None
     category: Optional[str] = None
 
+class QuestionCreate(BaseModel):
+    text: str
+    options: List[QuestionOption]
+    correct_answer: str
+    category: Optional[str] = "general"
+
+class QuestionBankSaveRequest(BaseModel):
+    questions: List[QuestionCreate]
+
+class QuestionBankSaveResult(BaseModel):
+    saved: int
+    skipped: int
+    questions: List[Question]
+
 class QuizAnswer(BaseModel):
     question_id: int
     selected_answer: str
@@ -371,6 +385,67 @@ def update_question(question_id: int, question_update: QuestionUpdate):
         conn.close()
     
     return result
+
+MAX_QUESTIONS_PER_SAVE = 100
+
+
+def _validate_new_question(question: QuestionCreate) -> None:
+    """Validate a question before inserting it into the question bank."""
+    if not question.text or not question.text.strip():
+        raise HTTPException(status_code=400, detail="Question text must not be empty")
+    option_ids = [opt.id for opt in question.options]
+    if len(option_ids) != 4 or set(option_ids) != {"a", "b", "c", "d"}:
+        raise HTTPException(status_code=400, detail="Options must have unique IDs 'a', 'b', 'c', 'd'")
+    if question.correct_answer not in option_ids:
+        raise HTTPException(status_code=400, detail="Correct answer must be one of the option IDs")
+
+
+@app.post("/api/questions/bank", response_model=QuestionBankSaveResult)
+def save_questions_to_bank(request: QuestionBankSaveRequest):
+    """Save questions (e.g. AI-generated ones) to the question bank, skipping duplicates"""
+    if not request.questions:
+        raise HTTPException(status_code=400, detail="No questions provided")
+    if len(request.questions) > MAX_QUESTIONS_PER_SAVE:
+        raise HTTPException(status_code=400, detail=f"Cannot save more than {MAX_QUESTIONS_PER_SAVE} questions at once")
+    for question in request.questions:
+        _validate_new_question(question)
+
+    conn = sqlite3.connect('quiz.db')
+    cursor = conn.cursor()
+    saved_questions = []
+    skipped = 0
+
+    try:
+        for question in request.questions:
+            text = question.text.strip()
+            category = (question.category or "general").strip().lower() or "general"
+
+            cursor.execute(
+                "SELECT 1 FROM questions WHERE LOWER(TRIM(text)) = LOWER(?) AND category = ?",
+                (text, category)
+            )
+            if cursor.fetchone():
+                skipped += 1
+                continue
+
+            options = [{"id": opt.id, "text": opt.text} for opt in question.options]
+            cursor.execute(
+                "INSERT INTO questions (text, options, correct_answer, category) VALUES (?, ?, ?, ?)",
+                (text, json.dumps(options), question.correct_answer, category)
+            )
+            saved_questions.append({
+                "id": cursor.lastrowid,
+                "text": text,
+                "options": options,
+                "correct_answer": question.correct_answer,
+                "category": category
+            })
+        conn.commit()
+    finally:
+        conn.close()
+
+    logger.info(f"Saved {len(saved_questions)} questions to question bank, skipped {skipped} duplicates")
+    return {"saved": len(saved_questions), "skipped": skipped, "questions": saved_questions}
 
 @app.get("/api/categories")
 def get_categories():

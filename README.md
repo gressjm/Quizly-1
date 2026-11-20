@@ -27,6 +27,7 @@ An interactive web-based quiz application that allows users to test their knowle
 - 🎚️ **Question Count Slider**: Select 1–20 questions per quiz with a range slider
 - 🤖 **AI-Powered Questions**: Generate fresh questions using multiple LLM providers
 - 📚 **Dual Question Sources**: Select between curated database questions or AI-generated content
+- 💾 **Save to Question Bank**: Keep AI-generated questions from a finished quiz as curated questions (duplicates are skipped)
 - 🔌 **Provider-Based Architecture**: Easy switching between Ollama and OpenAI providers
 - ⚙️ **Environment Configuration**: Configure providers via environment variables
 - 🏥 **Health Checks**: Monitor LLM provider availability and status

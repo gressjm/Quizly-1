@@ -3,6 +3,12 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import ScoreDisplay from '../../../../frontend/src/components/ScoreDisplay';
 
+jest.mock('axios', () => ({
+  post: jest.fn(),
+}));
+
+import axios from 'axios';
+
 // Mock data for testing
 const mockQuestions = [
   {
@@ -279,5 +285,46 @@ describe('ScoreDisplay Component', () => {
       />
     );
     expect(screen.getByText('📚 Keep studying and try again!')).toBeInTheDocument();
+  });
+});
+describe('ScoreDisplay save to question bank', () => {
+  const mockOnRestart = jest.fn();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('does not show the save button for database questions', () => {
+    render(<ScoreDisplay results={mockResultsHighScore} questions={mockQuestions} onRestart={mockOnRestart} source="database" />);
+
+    expect(screen.queryByText('💾 Save to Question Bank')).not.toBeInTheDocument();
+  });
+
+  it('saves AI questions and shows the result', async () => {
+    axios.post.mockResolvedValueOnce({ data: { saved: 1, skipped: 1, questions: [] } });
+
+    render(<ScoreDisplay results={mockResultsHighScore} questions={mockQuestions} onRestart={mockOnRestart} source="ai" />);
+    fireEvent.click(screen.getByText('💾 Save to Question Bank'));
+
+    expect(await screen.findByText('✅ Saved 1 question to the question bank. 1 already existed.')).toBeInTheDocument();
+    expect(screen.queryByText('💾 Save to Question Bank')).not.toBeInTheDocument();
+    expect(axios.post).toHaveBeenCalledWith('http://localhost:8000/api/questions/bank', {
+      questions: mockQuestions.map(({ text, options, correct_answer }) => ({
+        text,
+        options,
+        correct_answer,
+        category: undefined,
+      })),
+    });
+  });
+
+  it('shows an error and keeps the button when saving fails', async () => {
+    axios.post.mockRejectedValueOnce(new Error('API Error'));
+
+    render(<ScoreDisplay results={mockResultsHighScore} questions={mockQuestions} onRestart={mockOnRestart} source="ai" />);
+    fireEvent.click(screen.getByText('💾 Save to Question Bank'));
+
+    expect(await screen.findByText('Failed to save questions. Please try again.')).toBeInTheDocument();
+    expect(screen.getByText('💾 Save to Question Bank')).toBeEnabled();
   });
 });
