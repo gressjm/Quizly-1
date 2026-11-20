@@ -416,17 +416,20 @@ def save_questions_to_bank(request: QuestionBankSaveRequest):
     skipped = 0
 
     try:
+        # Take the write lock before reading so concurrent saves can't both miss a duplicate
+        cursor.execute("BEGIN IMMEDIATE")
+        cursor.execute("SELECT text, category FROM questions")
+        existing = {(row[0].strip().casefold(), row[1]) for row in cursor.fetchall()}
+
         for question in request.questions:
             text = question.text.strip()
             category = (question.category or "general").strip().lower() or "general"
 
-            cursor.execute(
-                "SELECT 1 FROM questions WHERE LOWER(TRIM(text)) = LOWER(?) AND category = ?",
-                (text, category)
-            )
-            if cursor.fetchone():
+            key = (text.casefold(), category)
+            if key in existing:
                 skipped += 1
                 continue
+            existing.add(key)
 
             options = [{"id": opt.id, "text": opt.text} for opt in question.options]
             cursor.execute(

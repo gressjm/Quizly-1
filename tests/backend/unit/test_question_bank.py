@@ -82,6 +82,27 @@ def test_skips_duplicates_case_insensitively(client, sample_db):
     assert len(_question_rows(sample_db)) == 2
 
 
+def test_skips_unicode_case_variants(client, sample_db):
+    payload = {"questions": [_ai_question(text="École history?"), _ai_question(text="école HISTORY?")]}
+
+    response = client.post("/api/questions/bank", json=payload)
+
+    assert response.json()["saved"] == 1
+    assert response.json()["skipped"] == 1
+    assert len(_question_rows(sample_db)) == 2
+
+
+def test_concurrent_saves_do_not_create_duplicates(client, sample_db):
+    from concurrent.futures import ThreadPoolExecutor
+
+    payload = {"questions": [_ai_question()]}
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _: client.post("/api/questions/bank", json=payload).json(), range(8)))
+
+    assert sum(r["saved"] for r in results) == 1
+    assert len(_question_rows(sample_db)) == 2
+
+
 def test_category_is_normalized(client):
     response = client.post("/api/questions/bank", json={"questions": [_ai_question(category="  World History ")]})
 
